@@ -1,8 +1,10 @@
 ---
 name: onchain-security
 description: >-
-  在安装任何 Skill/MCP/软件包、审查仓库或
-  URL、对代币/地址/合约作任何链上判断、执行任何交易动作之前使用；也用于审查社交媒体分享和消息中的工具、链接、地址与安全警告。
+  Use before installing any skill, MCP server or package, reviewing a repo or
+  URL, making any on-chain judgment about a token, address or contract, or
+  taking any trading action; also use to vet tools, links, addresses and
+  security warnings shared in social media posts and messages.
 version: 1.0.0
 license: MIT
 ---
