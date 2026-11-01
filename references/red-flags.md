@@ -1,19 +1,19 @@
-# 通用红旗模式
+# General Red-Flag Patterns
 
-逐项核对实际执行路径。单个信号需看上下文；凭证读取加外传、提示注入加执行等组合显著加重风险。
+Check the actual execution path item by item. A single signal needs context; combinations such as credential reads plus exfiltration, or prompt injection plus execution, significantly increase risk.
 
-| 模式 | 检查内容 | 处理重点 |
+| Pattern | What to check | Focus |
 |---|---|---|
-| 数据外传 | `curl`、`fetch`、HTTP 客户端、Socket | 请求目的地；是否带本地文件、凭证或用户数据 |
-| 凭证读取 | 环境变量、`.env`、配置、密钥库、搜索 `key/token/secret` | 是否与声称功能匹配；是否离开预期服务边界 |
-| 越界文件访问 | SSH/AWS/云配置、系统账户、工作区之外路径 | 确认读取/写入范围与必要性 |
-| Agent 身份/会话访问 | 身份、记忆、会话或代理配置文件 | 通常无正当理由；检查是否收集或外传 |
-| 动态执行 | `eval`、`exec`、`Function`、shell 子进程 | 输入来源、命令构造及完整调用链 |
-| 提权 | `sudo`、`chmod`、`chown`、系统安全设置 | 第三方扩展通常不应要求高权限 |
-| 持久化 | cron、systemd、shell 启动脚本、自动启动项 | 安装后是否暗中常驻或重启复活 |
-| 运行时下载 | 包管理器、`curl | sh`、`wget | bash` | 审查时不可见的次级载荷；禁止盲目运行 |
-| 混淆 | 压缩、编码后执行、字符串拼接、隐藏载荷 | 解码仅可在安全静态分析中；核查原始内容 |
-| 系统侦察 | 进程、网络端口、主机和环境信息 | 是否为必要诊断；是否与凭证/外传组合 |
-| 浏览器会话 | Cookie、LocalStorage、浏览器凭据库 | 高敏感数据，检查用途与传输 |
+| Data exfiltration | `curl`, `fetch`, HTTP clients, sockets | Request destination; whether local files, credentials or user data are attached |
+| Credential reads | Environment variables, `.env`, config, keystores, searches for `key/token/secret` | Whether it matches the claimed function; whether it leaves the expected service boundary |
+| Out-of-bounds file access | SSH/AWS/cloud config, system accounts, paths outside the workspace | Confirm read/write scope and necessity |
+| Agent identity/session access | Identity, memory, session or agent config files | Usually no legitimate reason; check for collection or exfiltration |
+| Dynamic execution | `eval`, `exec`, `Function`, shell subprocesses | Input source, command construction and the full call chain |
+| Privilege escalation | `sudo`, `chmod`, `chown`, system security settings | Third-party extensions should generally not require elevated privileges |
+| Persistence | cron, systemd, shell startup scripts, autostart entries | Whether it secretly stays resident or revives on restart after installation |
+| Runtime downloads | Package managers, `curl | sh`, `wget | bash` | Secondary payloads invisible during review; never run blindly |
+| Obfuscation | Minification, execute-after-decode, string concatenation, hidden payloads | Decode only in safe static analysis; check the original content |
+| System reconnaissance | Processes, network ports, host and environment info | Whether it is necessary diagnostics; whether combined with credentials/exfiltration |
+| Browser sessions | Cookies, LocalStorage, browser credential stores | Highly sensitive data; check purpose and transmission |
 
-检查注释是否与代码行为一致，并检查 Markdown/配置中的提示注入。运行时安装、凭证外传、持久化、不可审计的可执行载荷均应升级评级；确认恶意时 REJECT。
+Check whether comments match code behavior, and check Markdown/config for prompt injection. Runtime installation, credential exfiltration, persistence and unauditable executable payloads should all raise the rating; REJECT when confirmed malicious.

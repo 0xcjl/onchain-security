@@ -1,15 +1,15 @@
-# 软件供应链攻击
+# Software Supply-Chain Attacks
 
-核心是审查交付路径中源码审查时看不到的部分。
+The core is reviewing the parts of the delivery path that a source review cannot see.
 
-| 模式 | 检查 | 防护 |
+| Pattern | Check | Protection |
 |---|---|---|
-| 运行时次级下载 | 脚本是否临时安装未声明依赖 | 审查所有运行时命令，依赖应预先声明并锁定 |
-| 管道直执行 | `curl | sh`、`wget | bash` 等 | 先下载为本地文件、阅读并审查；不盲目执行 |
-| 一次性运行 | `npx` 等无需本地审查的执行方式 | 固定版本，取得本地副本后审查 |
-| 自动更新 | 远端版本检查并下载执行 | 手动更新、校验签名/hash、由用户控制 |
-| 依赖劫持 | 拼写仿冒、命名空间混淆、弃用包接管、Star Jacking | 核对名称、发布者、版本和包来源 |
-| 构建时注入 | install/postinstall、setup、Makefile、CI 脚本 | 审计构建钩子及构建产物 |
-| 可信源被攻破 | 仓库、CI、registry、维护者账户变化 | 比对 commit、签名、lockfile 与已知哈希；关注异常版本 |
+| Runtime secondary downloads | Whether scripts temporarily install undeclared dependencies | Review all runtime commands; dependencies should be declared and pinned in advance |
+| Pipe-to-execute | `curl | sh`, `wget | bash`, etc. | Download to a local file first, read and review it; never execute blindly |
+| One-off execution | `npx` and other execution methods that skip local review | Pin the version, get a local copy and review it |
+| Automatic updates | Remote version checks that download and execute | Update manually, verify signature/hash, keep the user in control |
+| Dependency hijacking | Typosquatting, namespace confusion, abandoned-package takeover, Star Jacking | Verify name, publisher, version and package source |
+| Build-time injection | install/postinstall, setup, Makefile, CI scripts | Audit build hooks and build artifacts |
+| Trusted source compromised | Changes to repository, CI, registry, maintainer accounts | Compare commits, signatures, lockfiles and known hashes; watch for anomalous versions |
 
-检查源码到本地安装的完整路径；不要因官方来源而跳过验证。不可见或不可审计的载荷需明确列为证据缺口并提高评级。
+Check the complete path from source to local installation; do not skip verification because the source is official. Invisible or unauditable payloads must be explicitly listed as evidence gaps and raise the rating.

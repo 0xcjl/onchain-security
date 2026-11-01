@@ -1,25 +1,25 @@
-# 产品 / 服务 / API / SDK 审查
+# Product / Service / API / SDK Review
 
-## 流程
+## Workflow
 
-1. **验证提供商**：官方身份、事故记录、隐私政策、服务条款、开源与审计情况。第三方冒称与知名品牌合作属于高风险。
-2. **评估架构**，重点看密钥和签名边界：用户是否掌握私钥；Agent 是否仅构建未签名交易；敏感操作是否有人类确认；凭证是否加密、最小权限并可轮换；是否静默自动更新；数据发往何处；失败是否安全降级。
-3. **逐项核对权限**：API Key 范围、网络域名、读取数据、写入、持久化、系统修改。每项权限都应对应明确用途，拒绝无关权限。
-4. **按主技能信任层级评级**。Tier 仅影响审查强度，不代表安全背书。
+1. **Verify the provider**: official identity, incident history, privacy policy, terms of service, open-source and audit status. Third parties claiming partnerships with well-known brands are high risk.
+2. **Assess the architecture**, focusing on key and signing boundaries: does the user hold the private key; does the agent only build unsigned transactions; do sensitive operations require human confirmation; are credentials encrypted, least-privilege and rotatable; are there silent automatic updates; where does data go; does failure degrade safely.
+3. **Check permissions one by one**: API key scope, network domains, data read, writes, persistence, system modification. Each permission should map to a clear purpose; reject unrelated permissions.
+4. **Rate using the main skill's trust tiers**. Tier only affects review intensity and is not a safety endorsement.
 
-## 签名 / 授权 / Permit 只读检查清单
+## Signature / approval / Permit read-only checklist
 
-本节仅用于审查，绝不签名、批准或提交交易。检查密钥存储位置、谁能调用签名器、签名请求是否可被人类读懂，以及链、合约、接收者、spender、额度、nonce、有效期和实际资产变化；覆盖 `eth_sign`、盲签、EIP-712、`permit`/`permit2`、`approve`、`setApprovalForAll` 和批量调用。无法完整解析时记录为 unknowns 并停止流程。
+This section is for review only; never sign, approve or submit transactions. Check where keys are stored, who can invoke the signer, whether signing requests are human-readable, and the chain, contract, recipient, spender, amount, nonce, expiry and actual asset changes; cover `eth_sign`, blind signing, EIP-712, `permit`/`permit2`, `approve`, `setApprovalForAll` and batch calls. When it cannot be fully parsed, record unknowns and stop the workflow.
 
-任何产品/流程只要属于“keys stored locally, agent signs”，均为 ⛔ REJECT，适用于所有代理。唯一例外是所有者已确认的交易代理执行（若你的部署启用该角色）；每次仍必须满足 [gate-rules.md](gate-rules.md) 的全部闸门。该例外不授权其他代理或流程进行签名、批准或提交。
+Any product/workflow that is "keys stored locally, agent signs" is ⛔ REJECT, applicable to all agents. The only exception is owner-confirmed trading agent execution (if your deployment enables that role); each execution must still pass every gate in [gate-rules.md](gate-rules.md). This exception does not authorize other agents or workflows to sign, approve or submit.
 
-## 评级
+## Rating
 
-- LOW：身份可核验、权限最小、架构透明。
-- MEDIUM：范围明确，存在可接受的限制或风险。
-- HIGH：第三方托管私钥、缺少人工确认、远程自动更新、数据边界不明；需人类决定。
-- REJECT：确认恶意、严重越权，或第三方冒用知名品牌并索取敏感权限。
+- LOW: verifiable identity, minimal permissions, transparent architecture.
+- MEDIUM: clear scope, with acceptable limitations or risks.
+- HIGH: third-party custody of private keys, no human confirmation, remote automatic updates, unclear data boundaries; requires a human decision.
+- REJECT: confirmed malicious, serious over-permissioning, or a third party impersonating a well-known brand while requesting sensitive permissions.
 
-## 报告字段
+## Report fields
 
-提供商/产品、官方或第三方来源、Tier、密钥管理、确认机制、凭证存储、更新机制、数据边界、权限、发现、证据、评级及建议。
+Provider/product, official or third-party source, Tier, key management, confirmation mechanism, credential storage, update mechanism, data boundaries, permissions, findings, evidence, rating and recommendations.

@@ -1,20 +1,20 @@
-# 代码仓库审查
+# Code Repository Review
 
-## 流程
+## Workflow
 
-1. **元数据与来源**：核对创建时间、最近提交、贡献者、Issues/PR、许可证、Fork 来源和上游差异。Star 可伪造；高关注度不代替代码审计。按主技能的 Tier 体系确定强度。
-2. **审查代码面**：优先看入口/API、认证授权、配置、依赖、CI 工作流及安装脚本。检查用户输入上的 `eval`/`exec`、注入、宽松 CORS、无期限令牌、硬编码凭证、过度权限和未验证输入。
-3. **检查 CI/CD**：写权限过大的令牌、`pull_request_target`、外部输入触发工作流、打印秘密、未知第三方 Action、从外部仓库取代码执行，都是风险点。
-4. **审查架构和依赖**：认证与权限最小化、数据流和日志、密钥轮换、更新方式、依赖来源与精确版本。检查 typosquatting、弃用包接管、安装钩子和锁文件。
-5. **审查 Fork**：重点查看相对上游的改动、新文件、新依赖和上游近期安全事件。源码不可读或关键发布物无法验证时不得给出无风险结论。
+1. **Metadata and source**: verify creation time, recent commits, contributors, Issues/PRs, license, fork origin and differences from upstream. Stars can be faked; high attention does not replace a code audit. Determine intensity with the main skill's Tier system.
+2. **Review the code surface**: prioritize entry points/APIs, authentication and authorization, config, dependencies, CI workflows and install scripts. Check for `eval`/`exec` on user input, injection, permissive CORS, non-expiring tokens, hardcoded credentials, excessive permissions and unvalidated input.
+3. **Check CI/CD**: tokens with excessive write permissions, `pull_request_target`, workflows triggered by external input, printing secrets, unknown third-party Actions, and fetching code from external repositories to execute are all risk points.
+4. **Review architecture and dependencies**: authentication and least privilege, data flows and logs, key rotation, update method, dependency sources and exact versions. Check for typosquatting, abandoned-package takeover, install hooks and lockfiles.
+5. **Review forks**: focus on changes relative to upstream, new files, new dependencies and recent upstream security incidents. When source is unreadable or key release artifacts cannot be verified, do not conclude there is no risk.
 
-## 评级参考
+## Rating reference
 
-- LOW：来源与代码清楚，未发现实质风险。
-- MEDIUM：有可限定的风险或需修复的问题。
-- HIGH：资金、凭证、认证、敏感配置或关键代码无法充分验证；交由人类决定。
-- REJECT：确认漏洞、恶意执行、凭证外泄或不可接受的权限设计。
+- LOW: source and code are clear; no substantive risk found.
+- MEDIUM: bounded risks or issues that need fixing.
+- HIGH: funds, credentials, authentication, sensitive config or critical code cannot be sufficiently verified; hand to a human for decision.
+- REJECT: confirmed vulnerability, malicious execution, credential leakage or unacceptable permission design.
 
-## 报告
+## Report
 
-记录仓库/commit、Tier、许可证、最近维护情况、审查范围、依赖/CI 检查、发现及证据、评级和建议。结论应绑定具体 commit；不能只凭 README、Star 数或作者声称。
+Record repository/commit, Tier, license, recent maintenance, review scope, dependency/CI checks, findings and evidence, rating and recommendations. Conclusions should be bound to a specific commit; do not rely only on the README, star count or author claims.

@@ -1,54 +1,54 @@
-# Skill / MCP 安全审查报告模板
+# Skill / MCP Security Review Report Template
 
-用于汇总 [skill-mcp.md](../references/skill-mcp.md) 的审查结果。
+Used to summarize review results from [skill-mcp.md](../references/skill-mcp.md).
 
 ---
 
-## 对象信息
+## Subject information
 
-- **名称：** [Skill/MCP 名称]
-- **版本：** [版本或 unknown]
-- **来源：** [ClawHub / GitHub / npm / URL / 其他]
-- **作者：** [名称/组织或 unknown]
-- **信任层级：** [1–5 / 未知] — [依据]
-- **发布时间 / 更新时间：** [日期 / 日期，或 unknown]
-- **审查时间：** [Asia/Bangkok ISO 8601]
-- **证据：** [版本、commit、evidence_id、链接或路径]
+- **Name:** [Skill/MCP name]
+- **Version:** [version or unknown]
+- **Source:** [ClawHub / GitHub / npm / URL / other]
+- **Author:** [name/organization or unknown]
+- **Trust tier:** [1–5 / unknown] — [basis]
+- **Published / Updated:** [date / date, or unknown]
+- **Review time:** [Asia/Bangkok ISO 8601]
+- **Evidence:** [version, commit, evidence_id, link or path]
 
-## 文件扫描
+## File scan
 
-- **总数：** [n]；**可执行文件：** [n]；**文档/数据文件：** [n]
-- **高风险文件：** [路径及类型；无则写 none]
-- **扫描范围限制与未知项：** [内容]
+- **Total:** [n]; **Executable files:** [n]; **Documentation/data files:** [n]
+- **High-risk files:** [path and type; write none if none]
+- **Scan scope limitations and unknowns:** [content]
 
-## 风险信号
+## Risk signals
 
-- [无发现，或逐项记录信号、严重度、文件位置、证据和影响]
+- [No findings, or record each signal with severity, file location, evidence and impact]
 
-## 权限与能力观察
+## Permission and capability observations
 
-| 类别 | 声明/观察到的访问范围 | 目的与证据 | 未知项 |
+| Category | Declared/observed access scope | Purpose and evidence | Unknowns |
 |---|---|---|---|
-| 读取 | [文件/目录或 none] | [用途] | [unknown] |
-| 写入 | [文件/目录或 none] | [用途] | [unknown] |
-| 网络 | [域名/端点或 none] | [用途] | [unknown] |
-| 系统命令 | [命令或 none] | [用途] | [unknown] |
-| 环境变量 | [变量名或 none] | [用途] | [unknown] |
+| Read | [files/directories or none] | [purpose] | [unknown] |
+| Write | [files/directories or none] | [purpose] | [unknown] |
+| Network | [domains/endpoints or none] | [purpose] | [unknown] |
+| System commands | [commands or none] | [purpose] | [unknown] |
+| Environment variables | [variable names or none] | [purpose] | [unknown] |
 
-## 架构观察
+## Architecture observations
 
-- **凭证处理：** [观察或 unknown]
-- **人工控制点：** [只描述流程中存在的控制与自动行为]
-- **自动更新：** [观察或 unknown]
-- **数据边界：** [本地/发送至何处；证据]
-- **失败时行为：** [观察或 unknown]
+- **Credential handling:** [observation or unknown]
+- **Human control points:** [describe only the controls and automatic behaviors present in the workflow]
+- **Automatic updates:** [observation or unknown]
+- **Data boundary:** [local / where it is sent; evidence]
+- **Failure behavior:** [observation or unknown]
 
-## 评级与结论
+## Rating and conclusion
 
-- **评级：** [🟢 LOW / 🟡 MEDIUM / 🔴 HIGH / ⛔ REJECT]
-- **结论：** [基于证据的简要判断]
-- **未知项：** [尚未确认的信息；无则写 none]
+- **Rating:** [🟢 LOW / 🟡 MEDIUM / 🔴 HIGH / ⛔ REJECT]
+- **Conclusion:** [brief evidence-based judgment]
+- **Unknowns:** [information not yet confirmed; write none if none]
 
-## 备注
+## Notes
 
-[引用 patterns/red-flags.md 中相关类别；说明误报解释、证据局限及建议的限制措施]
+[Cite relevant categories from patterns/red-flags.md; explain false-positive interpretations, evidence limitations and suggested mitigations]

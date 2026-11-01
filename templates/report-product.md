@@ -1,47 +1,47 @@
-# 产品 / 服务安全审查报告模板
+# Product / Service Security Review Report Template
 
-用于汇总 [product-service.md](../references/product-service.md) 的审查结果。
+Used to summarize review results from [product-service.md](../references/product-service.md).
 
 ---
 
-## 对象
+## Subject
 
-- **名称：** [产品/服务名称]
-- **提供方：** [公司/组织或 unknown]
-- **官方 URL：** [URL 或 unknown]
-- **类型：** [API / SDK / SaaS / 平台 / Skill / 其他]
-- **信任层级：** [1–5 / 未知] — [依据]
-- **审查时间：** [Asia/Bangkok ISO 8601]
-- **证据：** [evidence_id、链接、版本或本地路径]
+- **Name:** [product/service name]
+- **Provider:** [company/organization or unknown]
+- **Official URL:** [URL or unknown]
+- **Type:** [API / SDK / SaaS / platform / Skill / other]
+- **Trust tier:** [1–5 / unknown] — [basis]
+- **Review time:** [Asia/Bangkok ISO 8601]
+- **Evidence:** [evidence_id, link, version or local path]
 
-## 架构观察
+## Architecture observations
 
-- **密钥管理：** [托管方式、存储位置、轮换能力；未知项明确列出]
-- **写操作能力：** [产品实际具备的写入/资金操作能力，只记录观察]
-- **数据流：** [数据留在本地或发送到的服务/第三方]
-- **传输与存储保护：** [可验证的加密措施；未知项明确列出]
-- **数据保留：** [政策或实际观察]
-- **更新机制：** [手动/通知/自动更新等]
-- **发布物完整性：** [签名/校验信息是否可验证；未知项明确列出]
-- **外部依赖：** [服务、域名、SDK、依赖项]
+- **Key management:** [custody model, storage location, rotation capability; list unknowns explicitly]
+- **Write capabilities:** [write/fund operation capabilities the product actually has; record observations only]
+- **Data flow:** [data kept locally or the services/third parties it is sent to]
+- **Transport and storage protection:** [verifiable encryption measures; list unknowns explicitly]
+- **Data retention:** [policy or actual observation]
+- **Update mechanism:** [manual/notification/automatic update, etc.]
+- **Release artifact integrity:** [whether signature/checksum information is verifiable; list unknowns explicitly]
+- **External dependencies:** [services, domains, SDKs, dependencies]
 
-## 权限与影响范围
+## Permissions and impact scope
 
-| 权限/能力 | 用途依据 | 最坏影响 | 证据或未知项 |
+| Permission/capability | Purpose basis | Worst-case impact | Evidence or unknowns |
 |---|---|---|---|
-| [权限或能力] | [声明用途] | [被滥用或泄露时的影响] | [证据/unknown] |
+| [permission or capability] | [declared purpose] | [impact if abused or leaked] | [evidence/unknown] |
 
-## 发现
+## Findings
 
-- [无发现，或按唯一 ID 列出严重度、证据、影响范围]
+- [No findings, or list severity, evidence and impact scope by unique ID]
 
-## 评级与结论
+## Rating and conclusion
 
-- **评级：** [🟢 LOW / 🟡 MEDIUM / 🔴 HIGH / ⛔ REJECT]
-- **结论：** [基于证据的简要判断及适用边界]
-- **未知项：** [尚未确认的信息；无则写 none]
-- **限制措施观察：** [已存在或建议评估的限制措施，仅作审查建议]
+- **Rating:** [🟢 LOW / 🟡 MEDIUM / 🔴 HIGH / ⛔ REJECT]
+- **Conclusion:** [brief evidence-based judgment and its applicable boundaries]
+- **Unknowns:** [information not yet confirmed; write none if none]
+- **Mitigation observations:** [mitigations that exist or are suggested for evaluation; review suggestions only]
 
-## 备注
+## Notes
 
-[关键上下文、对照信息及证据局限]
+[Key context, comparison information and evidence limitations]
