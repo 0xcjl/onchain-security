@@ -51,4 +51,4 @@
 
 ## 备注
 
-[引用 patterns/red-flags.md 中相关类别；说明误报解释、证据局限及建议的限制措施]
+[引用 references/red-flags.md 中相关类别；说明误报解释、证据局限及建议的限制措施]

@@ -11,7 +11,7 @@ Check the actual execution path item by item. A single signal needs context; com
 | Dynamic execution | `eval`, `exec`, `Function`, shell subprocesses | Input source, command construction and the full call chain |
 | Privilege escalation | `sudo`, `chmod`, `chown`, system security settings | Third-party extensions should generally not require elevated privileges |
 | Persistence | cron, systemd, shell startup scripts, autostart entries | Whether it secretly stays resident or revives on restart after installation |
-| Runtime downloads | Package managers, `curl | sh`, `wget | bash` | Secondary payloads invisible during review; never run blindly |
+| Runtime downloads | Package managers; a downloaded script piped straight into a shell interpreter (red-flag example: `<downloader> <url> | <shell>`) | Secondary payloads invisible during review; never run blindly |
 | Obfuscation | Minification, execute-after-decode, string concatenation, hidden payloads | Decode only in safe static analysis; check the original content |
 | System reconnaissance | Processes, network ports, host and environment info | Whether it is necessary diagnostics; whether combined with credentials/exfiltration |
 | Browser sessions | Cookies, LocalStorage, browser credential stores | Highly sensitive data; check purpose and transmission |

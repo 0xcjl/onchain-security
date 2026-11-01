@@ -51,4 +51,4 @@ Used to summarize review results from [skill-mcp.md](../references/skill-mcp.md)
 
 ## Notes
 
-[Cite relevant categories from patterns/red-flags.md; explain false-positive interpretations, evidence limitations and suggested mitigations]
+[Cite relevant categories from references/red-flags.md; explain false-positive interpretations, evidence limitations and suggested mitigations]
