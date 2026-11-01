@@ -1,0 +1,8 @@
+{
+  "chains": {
+    "ethereum": {"rpc_candidates": [{"url": "https://ethereum-rpc.publicnode.com", "provider": "publicnode"}]},
+    "base": {"rpc_candidates": [{"url": "https://mainnet.base.org", "provider": "base"}]},
+    "bsc": {"rpc_candidates": [{"url": "https://bsc-dataseed.bnbchain.org", "provider": "bnbchain"}]},
+    "robinhood": {"rpc_candidates": [{"url": "https://rpc.example.invalid", "provider": "replace-me"}]}
+  }
+}

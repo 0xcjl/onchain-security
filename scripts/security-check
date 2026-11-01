@@ -1,0 +1,516 @@
+#!/usr/bin/env python3
+"""Read-only token security assessment with local evidence archival."""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from urllib.parse import urlencode
+import urllib.request
+from datetime import datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from security_check_rules import address_poisoning, match_security_flags, rate, tradable
+
+# Data root: config/, evidence/ and wrapper bin/ live here. Override with ONCHAIN_SECURITY_HOME.
+ROOT = Path(os.environ.get("ONCHAIN_SECURITY_HOME") or Path(__file__).resolve().parents[1]).expanduser()
+CONFIG = ROOT / "config"
+ZONE = ZoneInfo(os.environ.get("ONCHAIN_SECURITY_TZ", "UTC"))
+CHAIN_IDS = {"4663": "4663", "base": "8453", "bsc": "56", "eth": "1", "solana": "CT_501"}
+TIMEOUT = 25
+UA = "onchain-security-check/1.0 (read-only)"
+IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
+ADMIN_SLOT = "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103"
+ZEPP_IMPL_SLOT = "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3"
+ZEPP_ADMIN_SLOT = "0x10d6a54a4754c8869d6886b5f5d7fbfa5b4522237ea5c60d11bc4e7a1ff9390b"
+BEACON_SLOT = "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50"
+BLOCKSCOUT_PRO = "https://api.blockscout.com/4663/api/v2"
+GOPLUS_CORE_FIELDS = (
+    "is_mintable", "is_blacklisted", "owner_change_balance", "hidden_owner",
+    "transfer_pausable", "cannot_sell_all", "can_take_back_ownership", "selfdestruct",
+)
+
+
+def now():
+    return datetime.now(ZONE)
+
+
+def run_wrapper(args):
+    try:
+        done = subprocess.run(args, capture_output=True, text=True, timeout=TIMEOUT, check=False)
+        if done.returncode:
+            # Do not forward wrapper diagnostics, which could contain credential material.
+            raise RuntimeError(f"command failed (exit {done.returncode})")
+        payload = json.loads(done.stdout)
+        return payload.get("data", payload)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("timed out") from None
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(str(exc)[:500]) from None
+
+
+def _find_dict(value, keys):
+    if isinstance(value, dict):
+        if any(key in value for key in keys):
+            return value
+        for child in value.values():
+            found = _find_dict(child, keys)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_dict(child, keys)
+            if found is not None:
+                return found
+    return None
+
+
+def _first(data, *keys):
+    if not isinstance(data, dict):
+        return None
+    for key in keys:
+        if key in data:
+            return data[key]
+    return None
+
+
+def _percent(value):
+    try:
+        number = float(value)
+        return number * 100 if number <= 1 else number
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_true(value):
+    return value is True or value == 1 or (isinstance(value, str) and value.strip().lower() in {"1", "true", "yes"})
+
+
+def _has_code(value):
+    if not isinstance(value, str) or not value.lower().startswith("0x"):
+        return None
+    return bool(value[2:].strip("0"))
+
+
+def contract_status(is_contract):
+    """Only report a successful contract check when code presence was determined."""
+    return "ok" if is_contract is not None else "unavailable"
+
+
+def goplus_fields_sparse(fields):
+    return sum(not isinstance(fields, dict) or fields.get(field) is None for field in GOPLUS_CORE_FIELDS) > 5
+
+
+def goplus_check(chain, address):
+    command = "solana-token-security" if chain == "solana" else "token-security"
+    args = [str(ROOT / "bin" / "goplus"), command]
+    if chain != "solana":
+        args.append(CHAIN_IDS[chain])
+    args.append(address)
+    raw = run_wrapper(args)
+    result = _find_dict(raw, ("is_honeypot", "token_name", "is_open_source"))
+    if not result:
+        raise LookupError("empty result for address")
+    facts = {}
+    aliases = {
+        "is_honeypot": ("is_honeypot",), "cannot_sell_all": ("cannot_sell_all",),
+        "sell_blocked": ("cannot_sell_all",), "is_mintable": ("is_mintable",),
+        "is_blacklisted": ("is_blacklisted", "is_blacklist"), "buy_tax": ("buy_tax",),
+        "sell_tax": ("sell_tax",), "owner_change_balance": ("owner_change_balance",),
+        "hidden_owner": ("hidden_owner",), "is_proxy": ("is_proxy",),
+        "transfer_pausable": ("transfer_pausable",), "can_take_back_ownership": ("can_take_back_ownership",),
+        "selfdestruct": ("selfdestruct",), "is_open_source": ("is_open_source",),
+        "trust_list": ("trust_list",),
+        "token_name": ("token_name", "name"), "token_symbol": ("token_symbol", "symbol"),
+    }
+    for field, names in aliases.items():
+        facts[field] = _first(result, *names)
+    holders = result.get("holders")
+    if isinstance(holders, list):
+        total = sum(value for value in (_percent(h.get("percent")) for h in holders[:10] if isinstance(h, dict)) if value is not None)
+        facts["holder_top10_percent"] = total
+    else:
+        facts["holder_top10_percent"] = None
+    facts["raw_keys"] = sorted(str(key) for key in result.keys())
+    return {"status": "ok", "fields": facts}, facts
+
+
+def binance_check(chain, address):
+    raw = run_wrapper([str(ROOT / "bin" / "binance-web3"), "token-audit", CHAIN_IDS[chain], address])
+    result = _find_dict(raw, ("riskLevel", "hasResult", "riskItems", "risk_items"))
+    if result is None:
+        raise LookupError("empty audit result")
+    fields = {"riskLevel": _first(result, "riskLevel", "risk_level"), "hasResult": _first(result, "hasResult", "has_result"),
+              "tax": _first(result, "tax", "buyTax", "sellTax"), "risk_items": _first(result, "riskItems", "risk_items", "items"),
+              "token_name": _first(result, "token_name", "name"), "token_symbol": _first(result, "token_symbol", "symbol")}
+    return {"status": "ok", **fields}, fields
+
+
+def rpc_call(url, method, params):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": UA}, method="POST")
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
+        result = json.loads(response.read())
+    if "error" in result:
+        raise RuntimeError("RPC returned an error")
+    return result.get("result")
+
+
+def blockscout_get(path):
+    """Read Blockscout Pro without allowing credential-bearing URLs into errors."""
+    key = os.environ.get("BLOCKSCOUT_API_KEY", "")
+    if not key:
+        raise RuntimeError("Blockscout API key unavailable")
+    url = f"{BLOCKSCOUT_PRO}{path}?{urlencode({'apikey': key})}"
+    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
+            return json.loads(response.read())
+    except Exception:
+        raise RuntimeError("Blockscout API request failed") from None
+
+
+def blockscout_contract_check(address):
+    """Return source, proxy, and address metadata from the 4663 Blockscout API."""
+    contract = None
+    account = None
+    failures = []
+    for path, target in ((f"/smart-contracts/{address}", "contract"), (f"/addresses/{address}", "account")):
+        try:
+            result = blockscout_get(path)
+            if not isinstance(result, dict):
+                raise RuntimeError("invalid Blockscout response")
+            if target == "contract":
+                contract = result
+            else:
+                account = result
+        except Exception:
+            failures.append(target)
+
+    verified = None
+    verified_partial = None
+    proxy_type = None
+    implementations = None
+    if contract is not None:
+        verified_partial = contract.get("is_partially_verified")
+        is_verified = contract.get("is_verified")
+        if _is_true(verified_partial):
+            verified = "verified-partial"
+        elif _is_true(is_verified):
+            verified = "verified"
+        elif is_verified is False or is_verified == 0 or (isinstance(is_verified, str) and is_verified.strip().lower() in {"0", "false", "no"}):
+            verified = "unverified"
+        proxy_type = contract.get("proxy_type")
+        implementations = contract.get("implementations")
+    is_scam = account.get("is_scam") if account is not None else None
+    is_contract = account.get("is_contract") if account is not None else None
+    source_open = "1" if verified in ("verified", "verified-partial") else "0" if verified == "unverified" else None
+    return {
+        "status": "partial" if failures else "ok",
+        "source_verified": verified,
+        "is_partially_verified": verified_partial,
+        "is_open_source": source_open,
+        "proxy_type": proxy_type,
+        "implementations": implementations,
+        "is_scam": is_scam,
+        "is_contract": is_contract,
+        "creator_address_hash": account.get("creator_address_hash") if account is not None else None,
+        "creation_transaction_hash": account.get("creation_transaction_hash") if account is not None else None,
+    }
+
+
+def evm_contract_check(chain, address):
+    rpc = json.loads((CONFIG / "rpc.json").read_text())
+    rpc_key = {"4663": "robinhood", "base": "base", "bsc": "bsc", "eth": "ethereum"}[chain]
+    candidates = rpc.get("chains", {}).get(rpc_key, {}).get("rpc_candidates", [])
+    failures = []
+    for candidate in candidates:
+        endpoint = candidate.get("url")
+        if not endpoint:
+            continue
+        try:
+            code = rpc_call(endpoint, "eth_getCode", [address, "latest"])
+            if not isinstance(code, str):
+                raise RuntimeError("invalid eth_getCode result")
+            if code.lower() == "0x":
+                facts = {"is_contract": False}
+                return {"status": contract_status(facts["is_contract"]), **facts, "code": "empty", "provider": candidate.get("provider")}, facts
+            implementation = rpc_call(endpoint, "eth_getStorageAt", [address, IMPL_SLOT, "latest"])
+            admin = rpc_call(endpoint, "eth_getStorageAt", [address, ADMIN_SLOT, "latest"])
+            proxy_standard = "eip1967"
+            impl_address = "0x" + implementation[-40:] if isinstance(implementation, str) and len(implementation) >= 42 else None
+            admin_address = "0x" + admin[-40:] if isinstance(admin, str) and len(admin) >= 42 else None
+            impl_set = bool(impl_address and int(impl_address[2:], 16))
+            if not impl_set:
+                beacon_value = rpc_call(endpoint, "eth_getStorageAt", [address, BEACON_SLOT, "latest"])
+                beacon_address = "0x" + beacon_value[-40:] if isinstance(beacon_value, str) and len(beacon_value) >= 42 else None
+                beacon_set = bool(beacon_address and int(beacon_address[2:], 16))
+                if beacon_set:
+                    beacon_result = rpc_call(endpoint, "eth_call", [{"to": beacon_address, "data": "0x5c60da1b"}, "latest"])
+                    impl_address = "0x" + beacon_result[-40:] if isinstance(beacon_result, str) and len(beacon_result) >= 42 else None
+                    impl_set = bool(impl_address and int(impl_address[2:], 16))
+                    proxy_standard = "eip1967-beacon"
+                else:
+                    implementation = rpc_call(endpoint, "eth_getStorageAt", [address, ZEPP_IMPL_SLOT, "latest"])
+                    admin = rpc_call(endpoint, "eth_getStorageAt", [address, ZEPP_ADMIN_SLOT, "latest"])
+                    proxy_standard = "zeppelinos"
+                    impl_address = "0x" + implementation[-40:] if isinstance(implementation, str) and len(implementation) >= 42 else None
+                    admin_address = "0x" + admin[-40:] if isinstance(admin, str) and len(admin) >= 42 else None
+                    impl_set = bool(impl_address and int(impl_address[2:], 16))
+            else:
+                beacon_address = None
+            if not impl_set:
+                proxy_standard = None
+            owner = None
+            try:
+                owner_result = rpc_call(endpoint, "eth_call", [{"to": address, "data": "0x8da5cb5b"}, "latest"])
+                if isinstance(owner_result, str) and len(owner_result) >= 66:
+                    owner = "0x" + owner_result[-40:]
+            except Exception:
+                pass
+            admin_set = bool(admin_address and int(admin_address[2:], 16))
+            admin_kind = "unknown"
+            admin_code = None
+            if admin_set:
+                try:
+                    admin_code = rpc_call(endpoint, "eth_getCode", [admin_address, "latest"])
+                    has_code = _has_code(admin_code)
+                    admin_kind = "contract" if has_code is True else "eoa" if has_code is False else "unknown"
+                except Exception:
+                    admin_kind = "unknown"
+            facts = {"is_contract": True, "is_proxy": impl_set, "is_proxy_rpc": impl_set,
+                     "proxy_admin_kind": admin_kind if impl_set else None}
+            fields = {"status": contract_status(facts["is_contract"]), **facts, "proxy_standard": proxy_standard,
+                      "implementation": impl_address if impl_set else None,
+                      "beacon": beacon_address if proxy_standard == "eip1967-beacon" and impl_set else None,
+                      "admin": admin_address if admin_set else None, "admin_kind": admin_kind if impl_set else None,
+                      "admin_code_type": ("contract" if _has_code(admin_code) else "empty") if admin_set and _has_code(admin_code) is not None else None,
+                      "owner": owner, "provider": candidate.get("provider")}
+            return fields, facts
+        except Exception as exc:
+            failures.append(str(exc)[:180])
+    raise RuntimeError("all configured RPCs failed" + (": " + failures[-1] if failures else ""))
+
+
+def contract_check(chain, address, token_security_facts=None):
+    if chain == "solana":
+        return {"status": "unavailable", "reason": "Solana contract inspection is unavailable"}, {}
+    if chain == "4663":
+        try:
+            raw = run_wrapper([str(ROOT / "bin" / "robinhood-chain"), "token", address])
+        except Exception:
+            raw = None  # non-token contracts (e.g. beacons) still get Blockscout/RPC checks
+        token = raw.get("token") if isinstance(raw, dict) else None
+        if not isinstance(token, dict):
+            token = {}
+        token_fields = {
+            "name": _first(token, "name", "token_name"),
+            "symbol": _first(token, "symbol", "token_symbol"),
+            **{key: token[key] for key in ("type", "holders_count", "reputation") if key in token},
+        }
+        token_fields = {key: value for key, value in token_fields.items() if value is not None}
+        facts = {"token_name": _first(token, "token_name", "name"), "token_symbol": _first(token, "token_symbol", "symbol")}
+        blockscout = blockscout_contract_check(address)
+        source_value = blockscout["is_open_source"]
+        token_fields.update({"source_verified": blockscout["source_verified"],
+                             "source_verified_source": "Blockscout Pro" if blockscout["source_verified"] is not None else "unknown",
+                             "is_partially_verified": blockscout["is_partially_verified"],
+                             "proxy_type": blockscout["proxy_type"], "implementations": blockscout["implementations"],
+                             "is_scam": blockscout["is_scam"], "creator_address_hash": blockscout["creator_address_hash"],
+                             "creation_transaction_hash": blockscout["creation_transaction_hash"]})
+        facts.update({"source_verified": blockscout["source_verified"], "is_open_source": source_value,
+                      "is_scam": blockscout["is_scam"]})
+        if blockscout["is_contract"] is not None:
+            facts["blockscout_is_contract"] = blockscout["is_contract"]
+        try:
+            evm_fields, evm_facts = evm_contract_check(chain, address)
+        except Exception as exc:
+            fields = {"status": "error", "error": str(exc)[:300], "fields": token_fields,
+                      "blockscout_status": blockscout["status"]}
+            facts.update({"is_contract": blockscout["is_contract"], "is_proxy": None, "owner": None})
+            if blockscout["is_contract"] is not None:
+                fields["is_contract"] = blockscout["is_contract"]
+            return fields, facts
+        facts.update(evm_facts)
+        if facts.get("is_contract") is None and blockscout["is_contract"] is not None:
+            facts["is_contract"] = blockscout["is_contract"]
+            evm_fields["is_contract"] = blockscout["is_contract"]
+            evm_fields["status"] = contract_status(blockscout["is_contract"])
+        fields = {**evm_fields, "fields": token_fields, "blockscout_status": blockscout["status"]}
+        if blockscout["proxy_type"] or blockscout["implementations"]:
+            facts["is_proxy"] = True
+            fields["is_proxy"] = True
+            fields["proxy_type"] = blockscout["proxy_type"]
+            fields["implementations"] = blockscout["implementations"]
+        fields["status"] = contract_status(facts.get("is_contract"))
+        return fields, facts
+    return evm_contract_check(chain, address)
+
+
+def read_json(path, default):
+    try:
+        return json.loads(path.read_text())
+    except FileNotFoundError:
+        return default
+
+
+def load_flags(chain, address, token_facts):
+    path = CONFIG / "security-flags.json"
+    try:
+        content = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        content = ""
+    except UnicodeDecodeError:
+        return {"status": "error", "error": "security_flags_unparseable", "unknowns": ["security_flags_unparseable"],
+                "matches": [], "active": False}
+    if not content.strip():
+        flags = []
+    else:
+        try:
+            flags = json.loads(content)
+        except json.JSONDecodeError:
+            return {"status": "error", "error": "security_flags_unparseable", "unknowns": ["security_flags_unparseable"],
+                    "matches": [], "active": False}
+        if not isinstance(flags, list):
+            return {"status": "error", "error": "security_flags_unparseable", "unknowns": ["security_flags_unparseable"],
+                    "matches": [], "active": False}
+    matches = match_security_flags(flags, chain, address, token_facts)
+    return {"status": "ok", "matches": [{"flag_id": flag_id} for flag_id in matches], "active": bool(matches)}
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="security-check")
+    parser.add_argument("--chain", required=True, choices=tuple(CHAIN_IDS))
+    parser.add_argument("--address", required=True)
+    parser.add_argument("--mode", choices=("light", "full", "trade"), default="light")
+    parser.add_argument("--json", action="store_true", help="emit compact JSON")
+    args = parser.parse_args()
+    if not args.address or not re.fullmatch(r"[A-Za-z0-9]{8,128}|0x[0-9a-fA-F]{40}", args.address):
+        parser.error("address format is invalid")
+    timestamp = now()
+    address_id = args.address[2:] if args.address.lower().startswith("0x") else args.address
+    evidence_id = f"sec-{args.chain}-{address_id[:8].lower()}-{timestamp.strftime('%Y%m%d%H%M%S')}"
+    checks = {"goplus": {"status": "unavailable"}, "binance_audit": {"status": "skipped"},
+              "contract": {"status": "unavailable"}, "address_poisoning": {}, "security_flags": {"status": "unavailable"}}
+    facts = {}
+    failures = []
+    sources = []
+    try:
+        checks["goplus"], gp_facts = goplus_check(args.chain, args.address)
+        facts.update(gp_facts)
+        if checks["goplus"].get("status") == "ok":
+            fields = checks["goplus"].get("fields")
+            facts["goplus_trust_list"] = fields.get("trust_list") if isinstance(fields, dict) else None
+        sources.append("GoPlus")
+    except LookupError as exc:
+        checks["goplus"] = {"status": "unavailable", "error": str(exc)[:300]}
+        failures.append("goplus")
+    except Exception as exc:
+        checks["goplus"] = {"status": "error", "error": str(exc)[:300]}
+        failures.append("goplus")
+    if args.mode in ("full", "trade"):
+        if args.chain == "solana":
+            checks["binance_audit"] = {"status": "unavailable", "error": "audit chain is not supported by this wrapper"}
+            failures.append("binance")
+        else:
+            try:
+                checks["binance_audit"], bn_facts = binance_check(args.chain, args.address)
+                facts["binance_risk_level"] = bn_facts.get("riskLevel")
+                for key in ("token_name", "token_symbol"):
+                    if facts.get(key) is None and bn_facts.get(key) is not None:
+                        facts[key] = bn_facts[key]
+                sources.append("Binance Web3 token audit")
+            except Exception as exc:
+                checks["binance_audit"] = {"status": "error", "error": str(exc)[:300]}
+                failures.append("binance")
+    try:
+        checks["contract"], contract_facts = contract_check(args.chain, args.address, facts)
+        goplus_proxy = _is_true(facts.get("is_proxy"))
+        facts.update({key: value for key, value in contract_facts.items()
+                      if key not in ("token_name", "token_symbol") or value is not None})
+        rpc_proxy = _is_true(contract_facts.get("is_proxy_rpc", contract_facts.get("is_proxy")))
+        if goplus_proxy or rpc_proxy:
+            facts["is_proxy"] = True
+        if goplus_proxy and not rpc_proxy and checks["contract"].get("status") == "ok":
+            facts["proxy_admin_kind"] = "unknown"
+            checks["contract"]["proxy_admin_kind"] = "unknown"
+            checks["contract"]["admin_kind"] = "unknown"
+        for key in ("token_name", "token_symbol"):
+            if facts.get(key) is None and contract_facts.get(key) is not None:
+                facts[key] = contract_facts[key]
+        if checks["contract"].get("status") == "ok":
+            sources.append("Robinhood Chain Blockscout + configured JSON-RPC" if args.chain == "4663" else "configured JSON-RPC")
+        elif checks["contract"].get("status") == "unavailable":
+            failures.append("contract")
+    except Exception as exc:
+        checks["contract"] = {"status": "error", "error": str(exc)[:300]}
+        failures.append("contract")
+    try:
+        known = read_json(CONFIG / "known-addresses.json", {"chains": {}})
+        poisoning = address_poisoning(args.address, known.get("chains", {}).get(args.chain, []))
+    except Exception as exc:
+        poisoning = {"status": "error", "error": str(exc)[:300], "match": None}
+    checks["address_poisoning"] = poisoning
+    if poisoning.get("match") == "poisoning":
+        facts["address_poisoning"] = True
+    elif poisoning.get("match") == "exact":
+        checks["address_poisoning"]["note"] = "known address: " + str(poisoning.get("label") or "unlabeled")
+    try:
+        checks["security_flags"] = load_flags(args.chain, args.address, facts)
+        facts["active_security_flag"] = checks["security_flags"].get("active", False)
+    except Exception as exc:
+        checks["security_flags"] = {"status": "error", "error": str(exc)[:300]}
+
+    required = ["goplus", "contract"] + (["binance_audit"] if args.mode in ("full", "trade") else [])
+    goplus_fields = checks["goplus"].get("fields", {})
+    sparse_goplus = checks["goplus"].get("status") == "ok" and goplus_fields_sparse(goplus_fields)
+    if all(checks[key].get("status") == "ok" for key in required):
+        data_status = "complete"
+    elif all(checks[key].get("status") in ("error", "unavailable") for key in ("goplus", "contract", "binance_audit") if checks[key].get("status") != "skipped"):
+        data_status = "missing"
+    else:
+        data_status = "partial"
+    if sparse_goplus:
+        data_status = "partial"
+    if checks["contract"].get("blockscout_status") == "partial":
+        data_status = "partial"
+    rating, reasons = rate(facts)
+    trusted_exemption = "goplus_trusted_exemption: HIGH->MEDIUM" in reasons
+    flag_ids = [item["flag_id"] for item in checks["security_flags"].get("matches", []) if item.get("flag_id")]
+    reasons.extend(flag_ids)
+    if facts.get("address_poisoning"):
+        reasons.insert(0, "address resembles a known address (possible poisoning)")
+    result = {"rating": rating, "data_status": data_status,
+              "notes": (["goplus_fields_sparse"] if sparse_goplus else [])
+                       + (["goplus_trusted_exemption: HIGH->MEDIUM"] if trusted_exemption else []),
+              "tradable": tradable(rating, data_status, bool(facts.get("active_security_flag"))) and checks["security_flags"].get("status") == "ok",
+              "flags": reasons, "checks": checks, "sources": sources, "chain": args.chain,
+              "address": args.address, "mode": args.mode, "evidence_id": evidence_id,
+              "as_of": timestamp.isoformat(timespec="seconds"),
+              "expires_at": (timestamp + timedelta(minutes=10 if args.mode == "trade" else 360)).isoformat(timespec="seconds"),
+              "unknowns": sorted(
+                  [key for key in ("is_honeypot", "cannot_sell_all", "is_mintable", "is_blacklisted", "buy_tax", "sell_tax", "owner_change_balance", "hidden_owner", "is_proxy", "transfer_pausable", "can_take_back_ownership", "selfdestruct", "is_open_source", "is_scam", "holder_top10_percent", "token_name", "token_symbol") if facts.get(key) is None]
+                  + (["blockscout"] if checks["contract"].get("blockscout_status") == "partial" else [])
+                  + (["binance_audit"] if checks["binance_audit"].get("status") != "ok" else [])
+                  + (["contract_details"] if checks["contract"].get("status") != "ok" else [])
+                  + (checks["security_flags"].get("unknowns", ["security_flags"] if checks["security_flags"].get("status") != "ok" else []))
+                  + (["address_poisoning"] if checks["address_poisoning"].get("status") != "ok" else [])
+                  + (["contract_owner"] if checks["contract"].get("status") == "ok" and not facts.get("owner") else [])
+                  + (["proxy_admin"] if _is_true(facts.get("is_proxy"))
+                     and facts.get("proxy_admin_kind") in (None, "unknown") else [])
+                  + (["contract_verified_proxy_implementation_fields"] if args.chain == "4663" and checks["contract"].get("status") == "ok" and not checks["contract"].get("fields") else [])
+              )}
+    output_dir = ROOT / "evidence" / "security"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    target = output_dir / (evidence_id + ".json")
+    target.write_text(json.dumps(result, ensure_ascii=False, indent=None if args.json else 2) + "\n")
+    print(json.dumps(result, ensure_ascii=False, separators=(",", ":") if args.json else None, indent=None if args.json else 2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
